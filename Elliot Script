@@ -1,0 +1,125 @@
+-- Global variables
+local aimAssistEnabled = false -- controlled by toggle
+local aimAssistSmoothness = 0.2 -- default smoothness
+local animationActive = false -- controlled by animation
+
+-- Animation ID to trigger aim assist
+local triggerAnimationId = "rbxassetid://114155003741146"                                                                                                                      -- Load Rayfield UI library
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+-- Create UI window
+local Window = Rayfield:CreateWindow({
+    Name = "Elliot Aim Assist",
+    LoadingTitle = "Loading Elliot Aim Assist",
+    LoadingSubtitle = "by kyle",
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = "ElliotAimAssistConfig",
+        FileName = "UserSettings"
+    }
+})
+
+-- Create a tab for settings
+local Tab = Window:CreateTab("Settings", 4483362458)
+
+
+
+-- Toggle to enable/disable aim assist
+Tab:CreateToggle({
+    Name = "Enable Aim Assist",
+    CurrentValue = aimAssistEnabled,
+    Callback = function(value)
+        aimAssistEnabled = value
+        print("Aim Assist Enabled:", aimAssistEnabled)
+    end
+})
+
+-- Smoothness slider
+Tab:CreateSlider({
+    Name = "Smoothness",
+    Range = {0, 1},
+    Increment = 0.01,
+    CurrentValue = aimAssistSmoothness,
+    Callback = function(value)
+        aimAssistSmoothness = value
+        print("Smoothness set to:", aimAssistSmoothness)
+    end
+})
+
+-- Function to get enemies
+local function GetEnemies()
+    local enemies = {}
+    for _, player in pairs(game.Players:GetPlayers()) do
+        if player ~= game.Players.LocalPlayer and player.Character and player.Character:FindFirstChild("Humanoid") then
+            local torso = player.Character:FindFirstChild("UpperTorso") or player.Character:FindFirstChild("Torso")
+            if torso then
+                table.insert(enemies, {HP = player.Character.Humanoid.Health, Torso = torso, Character = player.Character})
+            end
+        end
+    end
+    return enemies
+end
+
+-- Raycast line-of-sight
+local function HasLineOfSight(origin, targetPos, target)
+    local params = RaycastParams.new()
+    params.FilterDescendantsInstances = {game.Players.LocalPlayer.Character}
+    params.FilterType = Enum.RaycastFilterType.Blacklist
+    params.IgnoreWater = true
+
+    local result = workspace:Raycast(origin, (targetPos - origin), params)
+    return not result or result.Instance:IsDescendantOf(target)
+end
+
+-- Animation detection
+local player = game.Players.LocalPlayer
+local humanoid = player.Character and player.Character:FindFirstChild("Humanoid")
+
+if humanoid then
+    humanoid.AnimationPlayed:Connect(function(animTrack)
+        if animTrack.Animation.AnimationId == triggerAnimationId then
+            animationActive = true
+            print("Animation started → Aim Assist active")
+        end
+    end)
+
+    humanoid.AnimationStopped:Connect(function(animTrack)
+        if animTrack.Animation.AnimationId == triggerAnimationId then
+            animationActive = false
+            print("Animation ended → Aim Assist deactivated")
+        end
+    end)
+end
+
+-- Aim assist loop
+local RunService = game:GetService("RunService")
+RunService.RenderStepped:Connect(function()
+    if not aimAssistEnabled or not animationActive then return end
+
+    local camera = workspace.CurrentCamera
+    local cameraPos = camera.CFrame.Position
+    local cameraForward = camera.CFrame.LookVector
+
+    local enemies = GetEnemies()
+    local bestTarget = nil
+    local closestAngle = 15 -- degrees
+
+    for _, enemy in pairs(enemies) do
+        if enemy.HP <= 131 then
+            local torsoPos = enemy.Torso.Position
+            local dirToTorso = (torsoPos - cameraPos).Unit
+            local angle = math.deg(math.acos(cameraForward:Dot(dirToTorso)))
+
+            if angle < closestAngle and HasLineOfSight(cameraPos, torsoPos, enemy.Character) then
+                closestAngle = angle
+                bestTarget = enemy
+            end
+        end
+    end
+
+    if bestTarget then
+        local targetDir = (bestTarget.Torso.Position - cameraPos).Unit
+        local newForward = cameraForward:Lerp(targetDir, aimAssistSmoothness)
+        camera.CFrame = CFrame.new(cameraPos, cameraPos + newForward)
+    end
+end)
