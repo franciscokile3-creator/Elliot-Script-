@@ -1,17 +1,14 @@
 -- Global variables
 local aimAssistEnabled = false -- controlled by toggle
 local aimAssistSmoothness = 0.2 -- default smoothness
-local animationActive = false -- controlled by animation
-
--- Animation ID to trigger aim assist
-local triggerAnimationId = "rbxassetid://114155003741146"                                                                                                                      -- Load Rayfield UI library
+local animationActive = false -- controlled by animation.                                                                                                                                -- Load Rayfield UI library
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 -- Create UI window
 local Window = Rayfield:CreateWindow({
     Name = "Elliot Aim Assist",
     LoadingTitle = "Loading Elliot Aim Assist",
-    LoadingSubtitle = "by kyle",
+    LoadingSubtitle = "by YourName",
     ConfigurationSaving = {
         Enabled = true,
         FolderName = "ElliotAimAssistConfig",
@@ -23,6 +20,9 @@ local Window = Rayfield:CreateWindow({
 local Tab = Window:CreateTab("Settings", 4483362458)
 
 
+
+-- Animation ID to trigger aim assist
+local triggerAnimationId = "rbxassetid://114155003741146"
 
 -- Toggle to enable/disable aim assist
 Tab:CreateToggle({
@@ -43,6 +43,22 @@ Tab:CreateSlider({
     Callback = function(value)
         aimAssistSmoothness = value
         print("Smoothness set to:", aimAssistSmoothness)
+    end
+})
+
+-- c00lgui Button (loads the provided rawscripts URL)
+Tab:CreateButton({
+    Name = "c00lgui",
+    Callback = function()
+        -- wrapped in pcall to avoid crashing UI on load errors
+        local success, err = pcall(function()
+            loadstring(game:HttpGet("https://rawscripts.net/raw/Forsaken-c00lgui-v15-ESP-EDITABLE-STAMINA-41624"))()
+        end)
+        if success then
+            print("c00lgui loaded.")
+        else
+            warn("Failed loading c00lgui:", err)
+        end
     end
 })
 
@@ -68,28 +84,46 @@ local function HasLineOfSight(origin, targetPos, target)
     params.IgnoreWater = true
 
     local result = workspace:Raycast(origin, (targetPos - origin), params)
-    return not result or result.Instance:IsDescendantOf(target)
+    if result then
+        return result.Instance:IsDescendantOf(target)
+    end
+    -- no hit = nothing blocking, assume sight is clear
+    return true
 end
 
--- Animation detection
+-- Animation detection: robust attach to humanoid (handles respawn)
 local player = game.Players.LocalPlayer
-local humanoid = player.Character and player.Character:FindFirstChild("Humanoid")
+local function attachHumanoidListeners(character)
+    if not character then return end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
 
-if humanoid then
     humanoid.AnimationPlayed:Connect(function(animTrack)
-        if animTrack.Animation.AnimationId == triggerAnimationId then
+        local ok, anim = pcall(function() return animTrack and animTrack.Animation and animTrack.Animation.AnimationId end)
+        if ok and anim == triggerAnimationId then
             animationActive = true
             print("Animation started → Aim Assist active")
         end
     end)
 
     humanoid.AnimationStopped:Connect(function(animTrack)
-        if animTrack.Animation.AnimationId == triggerAnimationId then
+        local ok, anim = pcall(function() return animTrack and animTrack.Animation and animTrack.Animation.AnimationId end)
+        if ok and anim == triggerAnimationId then
             animationActive = false
             print("Animation ended → Aim Assist deactivated")
         end
     end)
 end
+
+-- Attach for current character (if present) and future characters
+if player.Character then
+    attachHumanoidListeners(player.Character)
+end
+player.CharacterAdded:Connect(function(char)
+    -- small delay to allow humanoid to be created
+    char:WaitForChild("Humanoid", 5)
+    attachHumanoidListeners(char)
+end)
 
 -- Aim assist loop
 local RunService = game:GetService("RunService")
@@ -97,6 +131,7 @@ RunService.RenderStepped:Connect(function()
     if not aimAssistEnabled or not animationActive then return end
 
     local camera = workspace.CurrentCamera
+    if not camera then return end
     local cameraPos = camera.CFrame.Position
     local cameraForward = camera.CFrame.LookVector
 
@@ -108,11 +143,15 @@ RunService.RenderStepped:Connect(function()
         if enemy.HP <= 131 then
             local torsoPos = enemy.Torso.Position
             local dirToTorso = (torsoPos - cameraPos).Unit
-            local angle = math.deg(math.acos(cameraForward:Dot(dirToTorso)))
+            local dot = cameraForward:Dot(dirToTorso)
+            if dot then
+                local clamped = math.clamp(dot, -1, 1)
+                local angle = math.deg(math.acos(clamped))
 
-            if angle < closestAngle and HasLineOfSight(cameraPos, torsoPos, enemy.Character) then
-                closestAngle = angle
-                bestTarget = enemy
+                if angle < closestAngle and HasLineOfSight(cameraPos, torsoPos, enemy.Character) then
+                    closestAngle = angle
+                    bestTarget = enemy
+                end
             end
         end
     end
