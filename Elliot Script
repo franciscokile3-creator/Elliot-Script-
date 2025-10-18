@@ -1,129 +1,152 @@
 --// Services
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
+
+--// Local Player
+local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
---// Variables
-local LocalPlayer = Players.LocalPlayer
+--// Global Variables
 local aimAssistEnabled = false
-local animationActive = false
-local aimAssistSmoothness = 0.2
-local minHP, maxHP = 131, 100000
-local animationID = "rbxassetid://114155003741146"
+local animationTriggered = false
+local aimSmoothness = 0.25
+local target = nil
+local lastNotifyTime = 0
 
---// Rayfield UI
+--// Animation ID trigger
+local triggerAnimID = "rbxassetid://114155003741146"
+
+--// Load Rayfield UI
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 
 local Window = Rayfield:CreateWindow({
     Name = "Elliot Aim Assist | Forsaken",
     LoadingTitle = "Elliot System",
-    LoadingSubtitle = "by 007n7",
+    LoadingSubtitle = "By 007n7",
     ConfigurationSaving = {
         Enabled = true,
-        FolderName = "ElliotAA",
-        FileName = "AimAssist"
+        FolderName = "ElliotAimAssist",
     },
 })
 
 local Tab = Window:CreateTab("Main", 4483362458)
+local ESPButton = Tab:CreateButton({
+local Button = Tab:CreateButton({
+   Name = "c00lgui",
+   Callback = function() loadstring(game:HttpGet("https://rawscripts.net/raw/Forsaken-c00lgui-v15-ESP-EDITABLE-STAMINA-41624"))()
 
+   end,
+})   
+--// Aim Assist Toggle
 local Toggle = Tab:CreateToggle({
-    Name = "Enable Aim Assist",
+    Name = "Aim Assist",
     CurrentValue = false,
-    Flag = "aimAssistEnabled",
+    Flag = "AimAssist",
     Callback = function(Value)
         aimAssistEnabled = Value
+        StarterGui:SetCore("SendNotification", {
+            Title = "Aim Assist",
+            Text = Value and "Enabled" or "Disabled",
+            Duration = 2
+        })
     end,
 })
 
+--// Smoothness Slider
 local Slider = Tab:CreateSlider({
-    Name = "Smoothness",
+    Name = "Aim Smoothness",
     Range = {0.05, 1},
     Increment = 0.05,
     Suffix = "",
-    CurrentValue = 0.2,
+    CurrentValue = 0.25,
     Flag = "Smoothness",
     Callback = function(Value)
-        aimAssistSmoothness = Value
+        aimSmoothness = Value
+        StarterGui:SetCore("SendNotification", {
+            Title = "Smoothness Updated",
+            Text = "New Smoothness: " .. tostring(Value),
+            Duration = 2
+        })
     end,
 })
 
---// Tracer line
-local tracer = Drawing.new("Line")
-tracer.Visible = false
-tracer.Color = Color3.fromRGB(0, 170, 255)
-tracer.Thickness = 2
+--// Smooth Aim Function
+local function smoothAim(targetPart)
+    if not targetPart then return end
+    local targetPos = targetPart.Position
+    local cameraPos = Camera.CFrame.Position
+    local newCFrame = CFrame.new(cameraPos, targetPos)
+    Camera.CFrame = Camera.CFrame:Lerp(newCFrame, aimSmoothness)
+end
 
---// Find nearest valid enemy
-local function getNearestEnemy()
-    local nearest = nil
+--// Find Target Function
+local function getTarget()
+    local closestPlayer = nil
     local shortestDistance = math.huge
 
     for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character then
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
             local humanoid = player.Character:FindFirstChild("Humanoid")
-            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-
-            if humanoid and hrp then
-                local hp = humanoid.Health
-                if hp >= minHP and hp <= maxHP then
-                    local distance = (hrp.Position - Camera.CFrame.Position).Magnitude
-                    if distance < shortestDistance then
-                        shortestDistance = distance
-                        nearest = hrp
+            if humanoid and humanoid.Health >= 131 and humanoid.Health <= 100000 then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(player.Character.HumanoidRootPart.Position)
+                if onScreen then
+                    local dist = (Vector2.new(screenPos.X, screenPos.Y) - UserInputService:GetMouseLocation()).Magnitude
+                    if dist < shortestDistance then
+                        shortestDistance = dist
+                        closestPlayer = player
                     end
                 end
             end
         end
     end
-
-    return nearest
+    return closestPlayer
 end
 
---// Detect local player animation
-local function trackAnimations()
+--// Detect Animation Trigger
+local function detectAnimation()
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     local humanoid = char:WaitForChild("Humanoid")
 
-    humanoid.AnimationPlayed:Connect(function(animTrack)
-        if animTrack.Animation and animTrack.Animation.AnimationId == animationID then
-            animationActive = true
-
-            -- When animation stops
-            animTrack.Stopped:Connect(function()
-                animationActive = false
+    humanoid.AnimationPlayed:Connect(function(anim)
+        if anim.Animation.AnimationId == triggerAnimID then
+            animationTriggered = true
+            task.delay(2, function()
+                animationTriggered = false
             end)
         end
     end)
 end
 
--- Start tracking
-trackAnimations()
+--// Notification Helper
+local function notify(text)
+    local now = tick()
+    if now - lastNotifyTime > 1.5 then
+        lastNotifyTime = now
+        StarterGui:SetCore("SendNotification", {
+            Title = "Elliot Aim Assist",
+            Text = text,
+            Duration = 2
+        })
+    end
+end
 
---// Aim Assist + Tracer
+--// Main Aim Loop
 RunService.RenderStepped:Connect(function()
-    if aimAssistEnabled and animationActive then
-        local target = getNearestEnemy()
-        if target then
-            -- Aim at torso
-            local cameraCFrame = Camera.CFrame
-            local direction = (target.Position - cameraCFrame.Position).Unit
-            local newCFrame = CFrame.new(cameraCFrame.Position, cameraCFrame.Position + direction)
-            Camera.CFrame = cameraCFrame:Lerp(newCFrame, aimAssistSmoothness)
+    if aimAssistEnabled and animationTriggered then
+        local targetPlayer = getTarget()
 
-            -- Tracer line
-            local targetPos, onScreen = Camera:WorldToViewportPoint(target.Position)
-            if onScreen then
-                tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-                tracer.To = Vector2.new(targetPos.X, targetPos.Y)
-                tracer.Visible = true
-            else
-                tracer.Visible = false
+        if targetPlayer and targetPlayer.Character then
+            local torso = targetPlayer.Character:FindFirstChild("Torso") or targetPlayer.Character:FindFirstChild("UpperTorso")
+            if torso then
+                smoothAim(torso)
             end
         else
-            tracer.Visible = false
+            notify("No valid player found nearby!")
         end
-    else
-        tracer.Visible = false
     end
 end)
+
+--// Start detecting animation
+detectAnimation()
