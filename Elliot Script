@@ -1,152 +1,115 @@
---// Services
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local StarterGui = game:GetService("StarterGui")
+--// Elliot Aim Assist + Auto ThrowPizza //--
 
---// Local Player
-local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
+-- UI Creation --
+local ScreenGui = Instance.new("ScreenGui")
+local MainFrame = Instance.new("Frame")
+local Title = Instance.new("TextLabel")
+local RangeLabel = Instance.new("TextLabel")
+local RangeDropdown = Instance.new("TextButton")
+local ESPButton = Instance.new("TextButton")
 
---// Global Variables
-local aimAssistEnabled = false
-local animationTriggered = false
-local aimSmoothness = 0.25
-local target = nil
-local lastNotifyTime = 0
+ScreenGui.Parent = game.CoreGui
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
---// Animation ID trigger
-local triggerAnimID = "rbxassetid://114155003741146"
+MainFrame.Size = UDim2.new(0, 260, 0, 180)
+MainFrame.Position = UDim2.new(0.35, 0, 0.3, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
 
---// Load Rayfield UI
-local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+Title.Size = UDim2.new(1, 0, 0, 35)
+Title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+Title.Text = "Elliot Aim Assist"
+Title.TextColor3 = Color3.fromRGB(0, 255, 255)
+Title.Font = Enum.Font.SourceSansBold
+Title.TextSize = 20
+Title.Parent = MainFrame
 
-local Window = Rayfield:CreateWindow({
-    Name = "Elliot Aim Assist | Forsaken",
-    LoadingTitle = "Elliot System",
-    LoadingSubtitle = "By 007n7",
-    ConfigurationSaving = {
-        Enabled = true,
-        FolderName = "ElliotAimAssist",
-    },
-})
+RangeLabel.Size = UDim2.new(1, 0, 0, 25)
+RangeLabel.Position = UDim2.new(0, 0, 0, 45)
+RangeLabel.BackgroundTransparency = 1
+RangeLabel.Text = "Detection Range:"
+RangeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+RangeLabel.Font = Enum.Font.SourceSans
+RangeLabel.TextSize = 18
+RangeLabel.Parent = MainFrame
 
-local Tab = Window:CreateTab("Main", 4483362458)
-local ESPButton = Tab:CreateButton({
-local Button = Tab:CreateButton({
-   Name = "c00lgui",
-   Callback = function() loadstring(game:HttpGet("https://rawscripts.net/raw/Forsaken-c00lgui-v15-ESP-EDITABLE-STAMINA-41624"))()
+RangeDropdown.Size = UDim2.new(0.8, 0, 0, 30)
+RangeDropdown.Position = UDim2.new(0.1, 0, 0, 75)
+RangeDropdown.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
+RangeDropdown.Text = "Range: 100"
+RangeDropdown.TextColor3 = Color3.fromRGB(255, 255, 255)
+RangeDropdown.Font = Enum.Font.SourceSansBold
+RangeDropdown.TextSize = 18
+RangeDropdown.Parent = MainFrame
 
-   end,
-})   
---// Aim Assist Toggle
-local Toggle = Tab:CreateToggle({
-    Name = "Aim Assist",
-    CurrentValue = false,
-    Flag = "AimAssist",
-    Callback = function(Value)
-        aimAssistEnabled = Value
-        StarterGui:SetCore("SendNotification", {
-            Title = "Aim Assist",
-            Text = Value and "Enabled" or "Disabled",
-            Duration = 2
-        })
-    end,
-})
+ESPButton.Size = UDim2.new(0.8, 0, 0, 30)
+ESPButton.Position = UDim2.new(0.1, 0, 0, 120)
+ESPButton.BackgroundColor3 = Color3.fromRGB(0, 180, 255)
+ESPButton.Text = "Load Forsaken ESP"
+ESPButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ESPButton.Font = Enum.Font.SourceSansBold
+ESPButton.TextSize = 18
+ESPButton.Parent = MainFrame
 
---// Smoothness Slider
-local Slider = Tab:CreateSlider({
-    Name = "Aim Smoothness",
-    Range = {0.05, 1},
-    Increment = 0.05,
-    Suffix = "",
-    CurrentValue = 0.25,
-    Flag = "Smoothness",
-    Callback = function(Value)
-        aimSmoothness = Value
-        StarterGui:SetCore("SendNotification", {
-            Title = "Smoothness Updated",
-            Text = "New Smoothness: " .. tostring(Value),
-            Duration = 2
-        })
-    end,
-})
+--// Variables
+local cam = workspace.CurrentCamera
+local players = game:GetService("Players")
+local localPlayer = players.LocalPlayer
+local detectionRange = 100
+local rangeOptions = {100, 150, 200}
+local rangeIndex = 1
+local aiming = false
 
---// Smooth Aim Function
-local function smoothAim(targetPart)
-    if not targetPart then return end
-    local targetPos = targetPart.Position
-    local cameraPos = Camera.CFrame.Position
-    local newCFrame = CFrame.new(cameraPos, targetPos)
-    Camera.CFrame = Camera.CFrame:Lerp(newCFrame, aimSmoothness)
-end
-
---// Find Target Function
-local function getTarget()
-    local closestPlayer = nil
-    local shortestDistance = math.huge
-
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            local humanoid = player.Character:FindFirstChild("Humanoid")
-            if humanoid and humanoid.Health >= 131 and humanoid.Health <= 100000 then
-                local screenPos, onScreen = Camera:WorldToViewportPoint(player.Character.HumanoidRootPart.Position)
-                if onScreen then
-                    local dist = (Vector2.new(screenPos.X, screenPos.Y) - UserInputService:GetMouseLocation()).Magnitude
-                    if dist < shortestDistance then
-                        shortestDistance = dist
-                        closestPlayer = player
-                    end
-                end
-            end
-        end
-    end
-    return closestPlayer
-end
-
---// Detect Animation Trigger
-local function detectAnimation()
-    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    local humanoid = char:WaitForChild("Humanoid")
-
-    humanoid.AnimationPlayed:Connect(function(anim)
-        if anim.Animation.AnimationId == triggerAnimID then
-            animationTriggered = true
-            task.delay(2, function()
-                animationTriggered = false
-            end)
-        end
-    end)
-end
-
---// Notification Helper
-local function notify(text)
-    local now = tick()
-    if now - lastNotifyTime > 1.5 then
-        lastNotifyTime = now
-        StarterGui:SetCore("SendNotification", {
-            Title = "Elliot Aim Assist",
-            Text = text,
-            Duration = 2
-        })
-    end
-end
-
---// Main Aim Loop
-RunService.RenderStepped:Connect(function()
-    if aimAssistEnabled and animationTriggered then
-        local targetPlayer = getTarget()
-
-        if targetPlayer and targetPlayer.Character then
-            local torso = targetPlayer.Character:FindFirstChild("Torso") or targetPlayer.Character:FindFirstChild("UpperTorso")
-            if torso then
-                smoothAim(torso)
-            end
-        else
-            notify("No valid player found nearby!")
-        end
-    end
+--// Range Dropdown
+RangeDropdown.MouseButton1Click:Connect(function()
+	rangeIndex = rangeIndex % #rangeOptions + 1
+	detectionRange = rangeOptions[rangeIndex]
+	RangeDropdown.Text = "Range: " .. detectionRange
 end)
 
---// Start detecting animation
-detectAnimation()
+--// ESP Button
+ESPButton.MouseButton1Click:Connect(function()
+	loadstring(game:HttpGet("https://rawscripts.net/raw/Forsaken-c00lgui-v15-ESP-EDITABLE-STAMINA-41624"))()
+end)
+
+--// ThrowPizza RemoteEvent
+local function throwPizza()
+	local args = {
+		"UseActorAbility",
+		{
+			buffer.fromstring("\"ThrowPizza\"")
+		}
+	}
+	game:GetService("ReplicatedStorage"):WaitForChild("Modules"):WaitForChild("Network"):WaitForChild("RemoteEvent"):FireServer(unpack(args))
+end
+
+--// Find Nearest Player
+local function getNearestPlayer()
+	local nearest, nearestDist
+	for _, plr in pairs(players:GetPlayers()) do
+		if plr ~= localPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
+			local dist = (plr.Character.Head.Position - cam.CFrame.Position).Magnitude
+			if dist <= detectionRange and (not nearestDist or dist < nearestDist) then
+				nearest = plr
+				nearestDist = dist
+			end
+		end
+	end
+	return nearest
+end
+
+--// Main Loop
+task.spawn(function()
+	while task.wait(0.1) do
+		local target = getNearestPlayer()
+		if target then
+			aiming = true
+			cam.CFrame = CFrame.lookAt(cam.CFrame.Position, target.Character.Head.Position)
+			throwPizza()
+		else
+			aiming = false
+		end
+	end
+end)
